@@ -1,6 +1,6 @@
 import { resolve } from "pathe";
-import { downloadProto, allProtoFiles, cacheDir } from "./utils";
-import { createProtoRoot, generateQueryEndpoints } from "./proto";
+import { downloadProto, allProtoFiles, cacheDir } from "../src/utils";
+import { createProtoRoot, generateQueryEndpoints } from "../src/proto";
 import consola from "consola";
 import { cwd } from "node:process";
 
