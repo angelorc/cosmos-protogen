@@ -27,7 +27,7 @@ export function createProtoRoot(path: string): protobuf.Root {
   return root;
 }
 
-async function traverseServices(current, fn) {
+async function traverseServices(current: any, fn: any) {
   if (current instanceof protobuf.Service) {
     return await fn(current);
   }
@@ -78,7 +78,7 @@ export async function generateQueryEndpoints(root: protobuf.Root, file: string, 
 
   const load = root.loadSync(file, { keepCase: true });
 
-  return await traverseServices(load, async function (service) {
+  return await traverseServices(load, async function (service: any) {
     console.log(`Generating service ${service.fullName}`);
 
     let prefix = service.fullName.startsWith('.') ? service.fullName.slice(1) : service.fullName;
@@ -105,7 +105,7 @@ export async function generateQueryEndpoints(root: protobuf.Root, file: string, 
 
     chunks.push(code`
       import {
-        ${service.methodsArray.map((method) => {
+        ${service.methodsArray.map((method: any) => {
       return `${method.requestType}, ${method.responseType}`
     }).join(', ')}
       } from './types/${parent}/${module}/${version}/query';

@@ -108,3 +108,9 @@ export async function allProtoFiles(dir: string): Promise<string[]> {
 
   return result;
 }
+
+export function parseInput(input: string): { org: string, repo: string, version: string } {
+  const [org, repoVersion] = input.split(":");
+  const [repo, version] = repoVersion.split("@");
+  return { org, repo, version }
+}
