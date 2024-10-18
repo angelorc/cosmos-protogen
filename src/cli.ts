@@ -1,15 +1,16 @@
 #!/usr/bin/env node
-import { defineCommand, runMain } from "citty";
+import { defineCommand, runMain, showUsage } from "citty";
 import { consola } from "consola";
 import pkg from "../package.json" assert { type: "json" };
-import { allProtoFiles, cacheDir, downloadProto, downloadProtoDeps, parsePackage } from "./utils";
+import { allProtoFiles, cacheDir, parsePackage } from "./utils";
 import { resolve } from "pathe";
-import { createProtoRoot, generateQueryEndpoints } from "./proto";
+import { downloadProto, downloadProtoDeps, generateQueryEndpoint, generateQueryIndex } from "./proto";
 import { cwd } from "node:process";
+import { deps } from "./deps.config";
 
 const mainCommand = defineCommand({
   meta: {
-    name: pkg.name,
+    name: pkg.name + ' org:repo@version',
     version: pkg.version,
     description: pkg.description,
   },
@@ -20,6 +21,17 @@ const mainCommand = defineCommand({
     },
   },
   run: async ({ args }) => {
+    if (!args._[0]) {
+      await showUsage(mainCommand);
+      process.exit(0)
+    }
+
+    const protoToGenerate = args._[1]?.trim()
+    if (!protoToGenerate) {
+      consola.error("Please provide a valid proto dir. Example: bitsong");
+      return
+    }
+
     if (args.debug) {
       consola.level = 5
       process.env.DEBUG = process.env.DEBUG || "true";
@@ -42,20 +54,22 @@ const mainCommand = defineCommand({
     consola.info(`Downloading ${org}/${repo}@${version} proto files...`);
     await downloadProto(org, repo, version);
 
-    await downloadProtoDeps(org, repo, version);
+    // @ts-ignore
+    await downloadProtoDeps(org, repo, version, deps[protoToGenerate]);
 
     consola.success(`Successfully downloaded ${org}/${repo}@${version} proto files!`);
 
     const protoPath = resolve(cacheDir(), `${org}/${repo}/${version}`, "proto");
     const generatedPath = resolve(cwd(), 'generated', org, repo, version, 'types');
+    const protoFiles = (await allProtoFiles(resolve(protoPath, protoToGenerate))).filter((file) => file.endsWith("query.proto"));
 
-    const protoFiles = await allProtoFiles(protoPath);
-    const root = createProtoRoot(protoPath)
+    consola.info(`Generating types for ${protoFiles.length} files...`);
 
     for (const proto of protoFiles) {
-      consola.debug(`Generating query endpoints for ${proto}...`);
-      await generateQueryEndpoints(root, proto, protoPath, generatedPath)
+      await generateQueryEndpoint(proto, protoPath, generatedPath)
     }
+
+    await generateQueryIndex(generatedPath.replace('/types', ''))
 
     consola.success(`Successfully generated query endpoints: ./generated/${org}/${repo}/${version}`);
   }
