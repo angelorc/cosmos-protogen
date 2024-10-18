@@ -2,7 +2,10 @@
 import { defineCommand, runMain } from "citty";
 import { consola } from "consola";
 import pkg from "../package.json" assert { type: "json" };
-import { downloadProto, parseInput } from "./utils";
+import { allProtoFiles, cacheDir, downloadProto, downloadProtoDeps, parsePackage } from "./utils";
+import { resolve } from "pathe";
+import { createProtoRoot, generateQueryEndpoints } from "./proto";
+import { cwd } from "node:process";
 
 const mainCommand = defineCommand({
   meta: {
@@ -27,7 +30,7 @@ const mainCommand = defineCommand({
     let org: string, repo: string, version: string;
 
     try {
-      const input = parseInput(args._[0]);
+      const input = parsePackage(args._[0]);
       org = input.org;
       repo = input.repo;
       version = input.version;
@@ -39,7 +42,22 @@ const mainCommand = defineCommand({
     consola.info(`Downloading ${org}/${repo}@${version} proto files...`);
     await downloadProto(org, repo, version);
 
+    await downloadProtoDeps(org, repo, version);
+
     consola.success(`Successfully downloaded ${org}/${repo}@${version} proto files!`);
+
+    const protoPath = resolve(cacheDir(), `${org}/${repo}/${version}`, "proto");
+    const generatedPath = resolve(cwd(), 'generated', org, repo, version, 'types');
+
+    const protoFiles = await allProtoFiles(protoPath);
+    const root = createProtoRoot(protoPath)
+
+    for (const proto of protoFiles) {
+      consola.debug(`Generating query endpoints for ${proto}...`);
+      await generateQueryEndpoints(root, proto, protoPath, generatedPath)
+    }
+
+    consola.success(`Successfully generated query endpoints: ./generated/${org}/${repo}/${version}`);
   }
 })
 
