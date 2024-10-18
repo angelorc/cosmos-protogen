@@ -8,7 +8,6 @@ import { resolve } from "pathe";
 import { extract } from "tar";
 import { consola } from "consola";
 import { cwd } from "node:process";
-import { a } from "ofetch/dist/shared/ofetch.d0b3d489";
 
 export async function download(url: string, dest: string) {
   consola.debug(`Downloading ${url}`)
