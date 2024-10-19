@@ -5,13 +5,11 @@ import { cwd } from "node:process";
 import { dirname, resolve } from "pathe";
 import * as protobuf from 'protobufjs';
 import { code, Code, imp, joinCode } from "ts-poet";
-import { cacheDir, createArchiveURL, download, fetchLatestVersion, parsePackage, toCamelCase } from "./utils";
+import { cacheDir, download, toCamelCase } from "./utils";
 import consola from "consola";
 import { extract, t } from "tar";
-import { ProtoDeps } from "./types";
-
-// https://raw.githubusercontent.com/jas-chen/ts-proto/refs/heads/948-http-support/integration/google-api-http/google/protobuf/descriptor.proto
-// put this file in playground/proto/google/protobuf/descriptor.proto
+import { ProtoDeps, ProtoInfo } from "./types";
+import { getProtoInfo } from "./providers";
 
 export function createProtoRoot(path: string): protobuf.Root {
   const root = new protobuf.Root();
@@ -77,90 +75,6 @@ export async function generateTypes(file: string, protoPath: string, generatedPa
     `-I${protoPath}`
   );
 }
-
-
-// export async function generateQueryEndpoints(file: string, protoPath: string, generatedPath: string) {
-//   consola.debug(`Loading file ${file}`);
-
-//   try {
-//     const root = createProtoRoot(protoPath)
-//     const load = root.loadSync(file, { keepCase: true });
-
-//     await traverseServices(load, async function (service: any) {
-//       let prefix = service.fullName.startsWith('.') ? service.fullName.slice(1) : service.fullName;
-//       const parts = prefix.split('.');
-//       consola.log(parts)
-
-//       if (parts.at(-1) === 'Query') {
-//         parts.pop();
-//         prefix = parts.join('.');
-//       } else {
-//         consola.debug(`skipping service ${service.fullName}, is not a Query service`);
-//         return
-//       }
-
-//       // TODO: generate types at the end
-//       consola.debug(`Generating types for ${file}`);
-//       await generateTypes(file, protoPath, generatedPath);
-
-//       const parent = prefix.split('.')[0]
-//       const module = prefix.split('.')[1]
-//       const version = prefix.split('.')[2]
-
-//       const chunks: Code[] = [];
-
-//       chunks.push(code`
-//       import {
-//         ${service.methodsArray.map((method: any) => {
-//         return `${method.requestType}, ${method.responseType}`
-//       }).join(', ')}
-//       } from './types/${parent}/${module}/${version}/query';
-
-//       export const ${module} = {
-//         ${version}: {
-//     `);
-
-
-//       for (const method of service.methodsArray) {
-//         const name = toCamelCase(method.name);
-
-//         if (method.options === undefined) {
-//           consola.warn(`Method ${name} does not have options, file: ${file}`);
-//           continue;
-//         }
-
-//         const path = method.options['(google.api.http).get'];
-//         if (!path) {
-//           consola.warn(`Method ${name} does not have (google.api.http) options, file: ${file}`);
-//           continue;
-//         }
-
-//         const reqParams = method.requestType;
-//         const resParams = method.responseType
-
-//         chunks.push(code`\
-//         ${name}: {
-//           path: "${path}",
-//           method: "get",
-//           requestType: undefined as unknown as ${reqParams},
-//           responseType: undefined as unknown as ${resParams},
-//         },`);
-//       }
-
-//       chunks.push(code`}
-//     }`);
-
-//       const codeToWrite = joinCode(chunks, { on: "\n" })
-
-//       const filePath = resolve(generatedPath.replace('/types', ''), `${module}.ts`);
-//       await writeFile(filePath, codeToWrite.toString());
-
-//       consola.success(`Generated file ${filePath}`);
-//     })
-//   } catch (error) {
-//     consola.error(`Failed to load file ${file}: ${error}`);
-//   }
-// }
 
 interface QueryEndpoint {
   namespace: string[]
@@ -306,37 +220,29 @@ export async function generateQueryIndex(generatedPath: string) {
   consola.success(`Generated file ${filePath}`);
 }
 
-export async function downloadProtoDeps(org: string, repo: string, version: string, deps?: ProtoDeps) {
-  if (!org || !repo || !version) {
-    throw new Error(`Invalid input: ${org}/${repo}@${version}`);
-  }
-
-  const dest = resolve(cacheDir(), org, repo, version, 'proto');
+export async function downloadProtoDeps(protoInfo: ProtoInfo, deps?: ProtoDeps) {
+  console.log(protoInfo.cacheDir)
+  console.log(cacheDir())
+  const tmpDir = resolve(protoInfo.cacheDir ?? cacheDir(), 'cosmos-protogen');
+  consola.debug(`[downloadProtoDeps] Temp directory: ${tmpDir}`);
+  const subdir = protoInfo.subdir !== '/' ? protoInfo.subdir : '';
+  const dest = resolve(tmpDir, `${protoInfo.formattedName}-${protoInfo.version}`, subdir);
+  consola.debug(`[downloadProtoDeps] Destination: ${dest}`);
 
   consola.info(`Downloading proto dependencies...`);
   if (deps && deps.packages) {
     for (const pkg of deps.packages) {
-      // eslint-disable-next-line prefer-const
-      let { org: pkgOrg, repo: pkgRepo, version: pkgVersion } = parsePackage(pkg);
-      if (!pkgOrg || !pkgRepo) {
-        consola.error(`Invalid package: ${pkg}`);
-        continue;
-      }
+      const pkgProtoInfo = getProtoInfo(pkg);
 
-      if (!pkgVersion) {
-        consola.debug(`Fetching latest version for ${pkgOrg}/${pkgRepo}...`);
-        pkgVersion = await fetchLatestVersion(pkgOrg, pkgRepo)
-      }
-
-      consola.debug(`Downloading ${pkgOrg}/${pkgRepo}@${pkgVersion} proto files...`);
-      await downloadProto(pkgOrg, pkgRepo, pkgVersion);
+      consola.debug(`Downloading ${pkgProtoInfo.name}#${pkgProtoInfo.version} proto files...`);
+      await downloadProto(pkgProtoInfo);
 
       // copy proto files to the main proto directory
-      const src = resolve(cacheDir(), pkgOrg, pkgRepo, pkgVersion, 'proto');
+      const src = resolve(dest, 'proto');
       consola.debug(`Source: ${src}`);
 
       if (!existsSync(src)) {
-        consola.error(`Proto files not found for ${pkgOrg}/${pkgRepo}@${pkgVersion}`);
+        consola.error(`Proto files not found for ${pkgProtoInfo.name}#${pkgProtoInfo.version}`);
         continue;
       }
 
@@ -354,14 +260,7 @@ export async function downloadProtoDeps(org: string, repo: string, version: stri
         })
       )
 
-      // if (!existsSync(dest)) {
-      //   consola.error(`Proto files not found for ${pkgOrg}/${pkgRepo}@${pkgVersion}`);
-      //   return
-      // }
       consola.debug(`[downloadProtoDeps] Copied proto files to ${dest}`);
-
-
-      // consola.debug(`Skipping ${pkgOrg}/${pkgRepo}@${pkgVersion} proto files, already downloaded`);
     }
   }
 
@@ -385,21 +284,21 @@ export async function downloadProtoDeps(org: string, repo: string, version: stri
   }
 }
 
-export async function downloadProto(org: string, repo: string, version: string) {
-  const tmpDir = cacheDir();
-  const tarPath = resolve(tmpDir, `${org}-${repo}-${version}.tar.gz`);
-  const extractPath = resolve(tmpDir, `${org}/${repo}/${version}`);
+export async function downloadProto(protoInfo: ProtoInfo) {
+  // .cache/cosmos-protogen
+  const tmpDir = resolve(protoInfo.cacheDir || cacheDir(), 'cosmos-protogen');
+  // .cache/cosmos-protogen/bitsongofficial-go-bitsong-main.tar.gz
+  const tarPath = resolve(tmpDir, `${protoInfo.formattedName}-${protoInfo.version}.tar.gz`);
+  // .cache/cosmos-protogen/bitsongofficial-go-bitsong-main
+  const extractPath = resolve(tmpDir, `${protoInfo.formattedName}-${protoInfo.version}`);
 
   if (existsSync(extractPath)) {
-    consola.debug(`[downloadProto] Skipping ${org}/${repo}@${version} proto files, already downloaded`)
+    consola.debug(`[downloadProto] Skipping ${protoInfo.formattedName}-${protoInfo.version} proto files, already downloaded`)
     return;
   }
 
   await mkdir(dirname(tarPath), { recursive: true });
-
-  const archiveUrl = createArchiveURL(org, repo, version, version.startsWith("v") ? "tags" : "heads");
-  await download(archiveUrl, tarPath);
-
+  await download(protoInfo.tar, tarPath);
   await rm(extractPath, { recursive: true, force: true });
   await mkdir(extractPath, { recursive: true });
 
@@ -414,26 +313,9 @@ export async function downloadProto(org: string, repo: string, version: string) 
   await rm(tarPath, { force: true });
   consola.debug(`Extracted to ${extractPath}`);
 
-  // const entryToRemove = (await readdir(extractPath)).filter(entry => entry !== "proto" && entry !== "third_party");
   const entryToRemove = (await readdir(extractPath)).filter(entry => entry !== "proto");
   for (const entry of entryToRemove) {
     await rm(resolve(extractPath, entry), { recursive: true, force: true });
   }
   consola.debug(`Removed unnecessary files`);
-
-  // const protoPath = resolve(extractPath, "proto");
-  // const thirdPartyPath = resolve(extractPath, "third_party");
-  // const thirdPartyProtoPath = resolve(thirdPartyPath, "proto");
-
-  // if (existsSync(thirdPartyProtoPath)) {
-  //   consola.debug(`merging third_party/proto to proto`);
-
-  //   await cp(thirdPartyProtoPath, protoPath, { recursive: true });
-  //   await rm(thirdPartyPath, { recursive: true, force: true });
-  // }
-
-  // const googleDescriptorProtoPath = resolve(protoPath, "google/protobuf/descriptor.proto");
-  // if (!existsSync(googleDescriptorProtoPath)) {
-  //   await downloadDescriptorProto(protoPath);
-  // }
 }

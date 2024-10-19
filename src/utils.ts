@@ -26,12 +26,12 @@ export async function download(url: string, dest: string) {
 }
 
 export function cacheDir() {
-  return resolve(cwd(), '.cache', 'cosmos-protogen');
+  return resolve(cwd(), '.cache');
 }
 
-export function createArchiveURL(org: string, repo: string, version: string, mode: "heads" | "tags" = "tags") {
-  return `https://github.com/${org}/${repo}/archive/refs/${mode}/${version}.tar.gz`;
-}
+// export function createArchiveURL(org: string, repo: string, version: string, mode: "heads" | "tags" = "tags") {
+//   return `https://github.com/${org}/${repo}/archive/refs/${mode}/${version}.tar.gz`;
+// }
 
 export function toCamelCase(str: string): string {
   return str.charAt(0).toLowerCase() + str.slice(1);
@@ -51,24 +51,4 @@ export async function allProtoFiles(dir: string): Promise<string[]> {
   }
 
   return result;
-}
-
-export function parsePackage(input: string): { org: string, repo: string, version: string } {
-  const [org, repoVersion] = input.split(":");
-
-  const [repo, version] = repoVersion.split("@");
-  return { org, repo, version }
-}
-
-export async function fetchLatestVersion(org: string, repo: string): Promise<string> {
-  const url = `https://api.github.com/repos/${org}/${repo}/releases`;
-
-  const response = await $fetch<{ tag_name: string }[]>(url)
-  for (const release of response) {
-    if (release.tag_name.startsWith("v")) {
-      return release.tag_name;
-    }
-  }
-
-  throw new Error(`Failed to fetch latest version for ${org}/${repo}`);
 }

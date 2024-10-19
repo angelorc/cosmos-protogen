@@ -1,4 +1,4 @@
-# packageName
+# cosmos-protogen
 
 <!-- automd:badges color=yellow -->
 
@@ -8,6 +8,22 @@
 <!-- /automd -->
 
 This is my package description.
+
+## Features
+[todo]
+
+## Examples
+
+### CLI
+
+```sh
+# Download protogen from github
+cosmos-protogen bitsongofficial/go-bitsong/proto/bitsong
+
+# Download protogen from github with specific version
+cosmos-protogen bitsongofficial/go-bitsong/proto/bitsong#v0.17.0
+# cosmos-protogen bitsongofficial/go-bitsong/proto/bitsong#develop
+```
 
 ## Usage
 
